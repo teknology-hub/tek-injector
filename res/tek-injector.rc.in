@@ -23,7 +23,7 @@ BEGIN
       VALUE "FileDescription", "TEK Injector"
       VALUE "FileVersion", "@pretty_version@"
       VALUE "InternalName", "tek-injector"
-      VALUE "LegalCopyright", "Copyright (c) 2024-2025 Nuclearist"
+      VALUE "LegalCopyright", "Copyright (c) 2024-2026 Nuclearist"
       VALUE "OriginalFilename", "tek-injector.exe"
       VALUE "ProductName", "TEK Injector"
       VALUE "ProductVersion", "@pretty_version@"
