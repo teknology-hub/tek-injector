@@ -317,7 +317,7 @@ extern "C" void tek_inj_run_game(tek_inj_game_args *args) {
     return;
   }
   // Wait for injection thread to finish
-  switch (WaitForSingleObject(inj_thread, 3000)) {
+  switch (WaitForSingleObject(inj_thread, 10000)) {
   case WAIT_OBJECT_0:
     break;
   case WAIT_TIMEOUT:
