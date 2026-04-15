@@ -1,6 +1,6 @@
 //===-- tek-injector.h - TEK Injector API declarations --------------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-injector, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-injector/blob/main/COPYING for
 //    license information.
@@ -40,6 +40,7 @@
 #undef _WIN32_WINNT
 #endif
 #define _WIN32_WINNT 0xA000
+#include <sdkddkver.h>
 #define WIN32_LEAN_AND_MEAN
 #define NOGDICAPMASKS
 #define NOVIRTUALKEYCODES
@@ -77,7 +78,9 @@
 
 // Public API attribute.
 #ifdef TEK_INJ_STATIC
+
 #define TEK_INJ_API visibility("default")
+
 #else // def TEK_INJ_STATIC
 
 // Use DLL exports/imports.
@@ -167,8 +170,7 @@ struct tek_inj_game_args {
   /// [In] Number of elements in @ref argv.
   int argc;
   /// [In] Array of command-line arguments to pass to the game process.
-  /// Executable
-  ///    path is prepended to it automatically.
+  ///    Executable path is prepended to it automatically.
   const LPCWSTR _Nonnull *_Nullable argv;
   /// [In] Injection flags.
   tek_inj_flag flags;
@@ -193,7 +195,7 @@ extern "C" {
 ///
 /// @param [in, out] args
 ///    Input/output arguments for the function.
-[[gnu::TEK_INJ_API]]
+[[gnu::TEK_INJ_API, gnu::nonnull(1), gnu::access(read_write, 1)]]
 void tek_inj_run_game(tek_inj_game_args *_Nonnull args);
 
 #ifdef __cplusplus
