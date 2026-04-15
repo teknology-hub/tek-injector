@@ -5,8 +5,6 @@ tek-injector is a C/C++ library and program built on top of it for starting a ga
 
 ## Using
 
-The binaries are signed by Nuclearist's code signing certificate, which in turn is signed by [TEK CA](https://teknology-hub.com/public-keys/ca.crt), so they will be trusted by OS if TEK CA certificate is.
-
 ### Executable (for regular users)
 Get `tek-injector.exe` from [releases](https://github.com/teknology-hub/tek-injector/releases), get [tek-game-runtime](https://github.com/teknology-hub/tek-game-runtime/releases), and create a valid settings file for it (see tek-game-runtime repo for details).
 
@@ -17,12 +15,18 @@ For more advanced uses, the following command-line options are available:
 |-|-|
 |`--ti-exe-path "C:\path\to\game.exe"`|Path to the game executable so you don't have to select it manually|
 |`--ti-current-dir "C:\path\to\current\dir"`|Path to current directory for the game process. If not specified, game executable's parent directory is used|
-|`--ti-dll-path "C:\path\to\libtek-game-runtime.dll"`|Path to the tek-game-runtime DLL to inject. If not specified, [Windows' standard DLL search order](https://learn.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-search-order#standard-search-order-for-unpackaged-apps) relative to game process is used|
+|`--ti-dll-path "C:\path\to\libtek-game-runtime.dll"`|Path to the tek-game-runtime DLL to inject. If not specified, [Windows' standard DLL search order](https://learn.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-search-order#standard-search-order-for-unpackaged-apps) relative to game's current directory is used|
 |`--ti-settings-path "C:\path\to\tek-gr-settings.json"`|Path to the settings file that tek-game-runtime should load. If not specified, it'll look for it in game's current directory|
 |`--ti-high-priority`|Run game process with high priority (via `HIGH_PRIORITY_CLASS` flag)|
-|`--ti-run-as-admin`|Run game process with admin privileges if tek-injector.exe itself is elevated. By default, it would still run the game without admin privileges, to avoid related issues|
-All other command-line options not listed here are forwarded to the game process as-is.
+|`--ti-run-as-admin`|Run game process with admin privileges if tek-injector process itself is elevated. If not specfied, it always runs the game without admin privileges, to avoid common issues that may come with them|
+All other command-line options not listed here are forwarded to the game process as-is, and it's up to the game to interpret them.
 
 ### Library (for developers)
 
 The library comes both in static `libtek-injector.a` and dynamic (`libtek-injector.dll`/`libtek-injector.dll.a`) falvors. [tek-injector.h](https://github.com/teknology-hub/tek-injector/blob/main/include/tek-injector.h) declares a single function, `tek_inj_run_game`, that you can use with a filled `tek_inj_game_args` structure to run the game the way you need.
+
+### Note on binaries
+
+The binaries in [releases](https://github.com/teknology-hub/tek-injector/releases) are statically linked, making them able to be used in any Windows environment with no dependencies. They are built in [TEK-X86_64 environment](https://github.com/teknology-hub/MinGW-env) and signed by Nuclearist's code signing certificate, which in turn is signed by [TEK CA](https://teknology-hub.com/public-keys/ca.crt), so they will be trusted by OS if TEK CA certificate is.
+
+[TEK-X86_64 package repository](https://github.com/teknology-hub/MINGW-packages) also provides `mingw-w64-tek-x86_64-tek-injector` package with dynamic linkage, for use within MSYS2 environment.
