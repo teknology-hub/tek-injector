@@ -1,6 +1,6 @@
 //===-- lib.cpp - TEK Injector API implementation -------------------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-injector, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-injector/blob/main/COPYING for
 //    license information.
@@ -23,6 +23,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <type_traits>
 
 namespace {
 
@@ -81,8 +82,8 @@ extern "C" void tek_inj_run_game(tek_inj_game_args *args) {
   // Check if current process is elevated
   {
     TOKEN_ELEVATION_TYPE elevation_type;
-    DWORD ret_size;
-    if (!GetTokenInformation(token, TokenElevationType, &elevation_type,
+    if (DWORD ret_size;
+        !GetTokenInformation(token, TokenElevationType, &elevation_type,
                              sizeof elevation_type, &ret_size)) {
       args->result = TEK_INJ_RES_get_token_info;
       args->win32_error = GetLastError();
@@ -93,7 +94,7 @@ extern "C" void tek_inj_run_game(tek_inj_game_args *args) {
   // Build command line
   std::wstring command_line{args->exe_path};
   if (command_line.contains(L' ')) {
-    for (auto pos{command_line.find(L'"')}; pos != std::string::npos;
+    for (auto pos{command_line.find(L'"')}; pos != std::wstring::npos;
          pos = command_line.find(L'"', pos)) {
       command_line.replace(pos, 1, L"\\\"");
       pos += 2;
@@ -107,7 +108,7 @@ extern "C" void tek_inj_run_game(tek_inj_game_args *args) {
     if (arg.empty()) {
       arg = L"\"\"";
     } else if (arg.contains(L' ')) {
-      for (auto pos{arg.find(L'"')}; pos != std::string::npos;
+      for (auto pos{arg.find(L'"')}; pos != std::wstring::npos;
            pos = arg.find(L'"', pos)) {
         arg.replace(pos, 1, L"\\\"");
         pos += 2;
@@ -124,9 +125,10 @@ extern "C" void tek_inj_run_game(tek_inj_game_args *args) {
     command_line.append(arg);
   }
   // Create suspended game process
-  const DWORD create_flags = (args->flags & TEK_INJ_FLAG_high_proc_prio)
-                                 ? CREATE_SUSPENDED | HIGH_PRIORITY_CLASS
-                                 : CREATE_SUSPENDED;
+  const auto create_flags{
+      static_cast<DWORD>((args->flags & TEK_INJ_FLAG_high_proc_prio)
+                             ? CREATE_SUSPENDED | HIGH_PRIORITY_CLASS
+                             : CREATE_SUSPENDED)};
   STARTUPINFOW startup_info{};
   startup_info.cb = sizeof startup_info;
   PROCESS_INFORMATION proc_info;
@@ -154,9 +156,9 @@ extern "C" void tek_inj_run_game(tek_inj_game_args *args) {
                 .SubAuthorityCount = 1,
                 .IdentifierAuthority = SECURITY_MANDATORY_LABEL_AUTHORITY,
                 .SubAuthority = {SECURITY_MANDATORY_MEDIUM_RID}};
-    TOKEN_MANDATORY_LABEL label{
-        .Label = {.Sid = &mil_sid, .Attributes = SE_GROUP_INTEGRITY}};
-    if (!SetTokenInformation(mil_token, TokenIntegrityLevel, &label,
+    if (TOKEN_MANDATORY_LABEL label{
+            .Label = {.Sid = &mil_sid, .Attributes = SE_GROUP_INTEGRITY}};
+        !SetTokenInformation(mil_token, TokenIntegrityLevel, &label,
                              sizeof label)) {
       args->result = TEK_INJ_RES_set_token_info;
       args->win32_error = GetLastError();
@@ -188,25 +190,68 @@ extern "C" void tek_inj_run_game(tek_inj_game_args *args) {
   auto deleter{[&process](LPVOID addr) {
     VirtualFreeEx(process, addr, 0, MEM_RELEASE);
   }};
+  // Function that will load libtek-game-runtime.dll on game side. Hand-written
+  //    because we need to know its exact size, and positions to dynamically
+  //    inject function address into
+  unsigned char func[]{
+      // sub rsp,0x28
+      0x48, 0x83, 0xEC, 0x28,
+      // lea rcx,[rip+0x29]
+      0x48, 0x8D, 0x0D, 0x29, 0x00, 0x00, 0x00,
+      // mov rax,0x0000000000000000 (replaced with address of LoadLibraryW)
+      0x48, 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      // call rax
+      0xFF, 0xD0,
+      // test rax,rax
+      0x48, 0x85, 0xC0,
+      // jnz success
+      0x75, 0x11,
+      // mov rax,0x0000000000000000 (replaced with address of GetLastError)
+      0x48, 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      // call rax
+      0xFF, 0xD0,
+      // add rsp,0x28
+      0x48, 0x83, 0xC4, 0x28,
+      // ret
+      0xC3,
+      // success:
+      // xor eax,eax
+      0x31, 0xC0,
+      // add rsp,0x28
+      0x48, 0x83, 0xC4, 0x28,
+      // ret
+      0xC3};
+  *reinterpret_cast<std::add_pointer_t<decltype(&LoadLibraryW)>>(&func[13]) =
+      LoadLibraryW;
+  *reinterpret_cast<std::add_pointer_t<decltype(&GetLastError)>>(&func[30]) =
+      GetLastError;
   std::unique_ptr<VOID, decltype(deleter)> mem{
-      VirtualAllocEx(process, nullptr, dll_path_size, MEM_COMMIT | MEM_RESERVE,
-                     PAGE_READWRITE),
+      VirtualAllocEx(process, nullptr, sizeof func + dll_path_size,
+                     MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE),
       deleter};
   if (!mem) {
     args->result = TEK_INJ_RES_mem_alloc;
     args->win32_error = GetLastError();
     return;
   }
+  // Write function code to the allocated page
+  if (!WriteProcessMemory(process, mem.get(), func, sizeof func, nullptr)) {
+    args->result = TEK_INJ_RES_mem_write;
+    args->win32_error = GetLastError();
+    return;
+  }
   // Write DLL path to the allocated page
-  if (!WriteProcessMemory(process, mem.get(), dll_path.data(), dll_path_size,
-                          nullptr)) {
+  if (!WriteProcessMemory(
+          process, reinterpret_cast<unsigned char *>(mem.get()) + sizeof func,
+          dll_path.data(), dll_path_size, nullptr)) {
     args->result = TEK_INJ_RES_mem_write;
     args->win32_error = GetLastError();
     return;
   }
   // Create input file mapping for TEK Game Runtime
   unique_handle mapping;
-  const DWORD buf_size = sizeof(data_header) + args->data_size;
+  const auto buf_size{
+      static_cast<DWORD>(sizeof(data_header) + args->data_size)};
   if (elevated && !(args->flags & TEK_INJ_FLAG_run_as_admin)) {
     // Initialize security descriptor with DACL that allows only current user
     //    and SACL that allows access for medium integrity level
@@ -306,11 +351,9 @@ extern "C" void tek_inj_run_game(tek_inj_game_args *args) {
                       reinterpret_cast<char *>(hdr + 1));
   view.reset();
   // Create the thread for injecting the DLL
-  unique_handle inj_thread{
-      CreateRemoteThread(process, nullptr, 0,
-                         reinterpret_cast<LPTHREAD_START_ROUTINE>(
-                             reinterpret_cast<void *>(LoadLibraryW)),
-                         mem.get(), 0, nullptr)};
+  unique_handle inj_thread{CreateRemoteThread(
+      process, nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(mem.get()),
+      nullptr, 0, nullptr)};
   if (!inj_thread) {
     args->result = TEK_INJ_RES_create_thread;
     args->win32_error = GetLastError();
@@ -321,8 +364,10 @@ extern "C" void tek_inj_run_game(tek_inj_game_args *args) {
   case WAIT_OBJECT_0:
     break;
   case WAIT_TIMEOUT:
-    SetLastError(ERROR_TIMEOUT);
-    [[fallthrough]];
+    args->result = TEK_INJ_RES_thread_wait;
+    args->win32_error = ERROR_TIMEOUT;
+    TerminateThread(inj_thread, 0);
+    return;
   default:
     args->result = TEK_INJ_RES_thread_wait;
     args->win32_error = GetLastError();
@@ -332,16 +377,12 @@ extern "C" void tek_inj_run_game(tek_inj_game_args *args) {
   mapping.close();
   mem.reset();
   // Check injection thread exit code
-  DWORD exit_code;
-  if (GetExitCodeThread(inj_thread, &exit_code)) {
-    args->win32_error = 0;
-  } else {
-    exit_code = 0;
-    args->win32_error = GetLastError();
-  }
+  DWORD exit_code{};
+  GetExitCodeThread(inj_thread, &exit_code);
   inj_thread.close();
-  if (!exit_code) {
+  if (exit_code) {
     args->result = TEK_INJ_RES_dll_load;
+    args->win32_error = exit_code;
     return;
   }
   // Resume game's main thread execution
@@ -352,4 +393,5 @@ extern "C" void tek_inj_run_game(tek_inj_game_args *args) {
   }
   process.success = true;
   args->result = TEK_INJ_RES_ok;
+  args->win32_error = 0;
 }
