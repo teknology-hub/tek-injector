@@ -43,7 +43,7 @@ struct [[gnu::visibility("internal")]] com_ctx {
   }
 };
 
-/// RAII wrapper COM objects.
+/// RAII wrapper for COM objects.
 template <typename T>
   requires std::derived_from<T, IUnknown>
 class [[gnu::visibility("internal")]] com_ptr {
@@ -75,7 +75,7 @@ static inline void display_error(LPCWSTR msg) {
 
 static inline std::unique_ptr<WCHAR, decltype(&LocalFree)>
 get_os_err_msg(DWORD err) {
-  LPWSTR msg{nullptr};
+  LPWSTR msg{};
   FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER |
                      FORMAT_MESSAGE_IGNORE_INSERTS | FORMAT_MESSAGE_FROM_SYSTEM,
                  nullptr, err, 0, reinterpret_cast<LPWSTR>(&msg), 0, nullptr);
@@ -89,7 +89,7 @@ int wmain(int argc, wchar_t *argv[]) {
   std::wstring current_dir;
   std::wstring dll_path{L"libtek-game-runtime.dll"};
   std::vector<LPCWSTR> game_argv;
-  tek_inj_flag flags = TEK_INJ_FLAG_none;
+  tek_inj_flag flags{TEK_INJ_FLAG_none};
   std::string settings_path;
   // Scan command line
   const std::span arg_span{argv, static_cast<std::size_t>(argc)};
@@ -202,11 +202,8 @@ int wmain(int argc, wchar_t *argv[]) {
                              static_cast<std::uint32_t>(settings_path.length()),
                          .data = settings_path.data(),
                          .result = TEK_INJ_RES_ok,
-                         .win32_error = 0};
+                         .win32_error{}};
   tek_inj_run_game(&args);
-  if (args.result == TEK_INJ_RES_ok) {
-    return EXIT_SUCCESS;
-  }
   std::wstring msg;
   switch (args.result) {
   case TEK_INJ_RES_ok:
@@ -258,8 +255,10 @@ int wmain(int argc, wchar_t *argv[]) {
     break;
   }
   if (args.win32_error) {
+    const auto os_msg{get_os_err_msg(args.win32_error)};
     msg = std::format(L"{}: ({}) {}", msg, args.win32_error,
-                      get_os_err_msg(args.win32_error).get());
+                      os_msg ? os_msg.get()
+                             : L"[No message provided by Windows]");
   }
   display_error(msg.data());
   return EXIT_FAILURE;
